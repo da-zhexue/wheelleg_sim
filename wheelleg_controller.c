@@ -14,12 +14,12 @@
 #include "keyboard.h"
 
 const float lqr_K[12] = {
-    -36.7965f, -1.1603f, -2.20387f, -0.6839f, -9.7831f, -1.3954f,
-    6.7737f, 0.9880f, -0.1227f, -0.1532f, -3.0004f, -0.1956f
+    -10.3087f, -0.7176f, -1.1702f, -5.2173f, -42.9164f, -5.5554f,
+   37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
 };
 // const float lqr_K[12] = {
-//     -0.7965f, -0.1603f, -0.7387f, -1.1839f, -7.7831f, -1.3954f,
-//     2.7737f, 0.3880f, -0.1227f, -0.1532f, -1.0004f, -0.1956f
+//     -34.2377f, -1.0666f, -1.5904f, -7.2944f, -115.4345f, -7.1831f,
+//     78.5909f, 1.9033f, -0.1540f, -0.7067f, -14.2411f, -0.8282f
 // };
 // const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -201,8 +201,8 @@ int main(int argc, char **argv) {
     VMC_init(left_leg, L1, L2);
     VMC_init(right_leg, L1, L2);
 
-    PID_Controller leg_l_pid = {500.0f, 0.0f, 10.0f, 0, 0, 0}; // 腿长PID参数参考硬件
-    PID_Controller leg_r_pid = {500.0f, 0.0f, 10.0f, 0, 0, 0};
+    PID_Controller leg_l_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0}; // 腿长PID参数参考硬件
+    PID_Controller leg_r_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0};
 
     float lqr_out_L[2], lqr_out_R[2];
     float err_L[6] = {0}, err_R[6] = {0};
@@ -221,8 +221,8 @@ int main(int argc, char **argv) {
 
     float roll_set = 0.0f;
 
-    PID_Controller turn_pid = {1.0f, 0.0f, 0.0f, 0, 0, 0};
-    PID_Controller roll_pid = {10.0f, 0.0f, 0.5f, 0, 0, 0};
+    PID_Controller turn_pid = {10.0f, 0.0f, 0.0f, 0, 0, 0};
+    PID_Controller roll_pid = {1.0f, 0.0f, 0.0f, 0, 0, 0};
     PID_Controller tp_pid = {3.0f, 0.0f, 0.0f, 0, 0, 0};
 
     float current_time = 0.0f;
@@ -294,7 +294,6 @@ int main(int argc, char **argv) {
         if (fabsf(MotionAccel_n[1]) < 0.02f) MotionAccel_n[1] = 0.0f;
         if (fabsf(MotionAccel_n[2]) < 0.04f) MotionAccel_n[2] = 0.0f;
 
-        printf("motionacc 0: %.2f, 1: %.2f, 2: %.2f\n", MotionAccel_b[0], MotionAccel_b[1], MotionAccel_b[2]);
         // 卡尔曼滤波融合加速度计与轮速（参考observe_task.c）
         xvEstimateKF_Update(&vaEstimateKF, -MotionAccel_b[0], wheel_v);
         v_filter = vel_acc[0];                  // 滤波后速度
@@ -302,28 +301,6 @@ int main(int argc, char **argv) {
 
         printf("target_x: %.3f x: %.3f\n", target_x_ref, x_filter);
         printf("target_v: %.3f v: %.3f\n", smooth_target_v, v_filter);
-
-        float yaw_error = turn_set - yaw;
-        if (yaw_error > PI) yaw_error -= 2.0f * PI;
-        else if (yaw_error < -PI) yaw_error += 2.0f * PI;
-
-        // 期望偏航角速度（rad/s）
-        yaw_rate_cmd = turn_pid.kp * yaw_error - turn_pid.kd * yaw_rate;
-
-        // 计算旋转时的离心力补偿
-        float mass = 1.0f;  // 机器人总质量（需要根据实际调整）
-        float com_height = target_L0;  // 质心高度（用腿长近似）
-        centrifugal_force = mass * com_height * yaw_rate_cmd * yaw_rate_cmd;
-
-        // 计算俯仰角补偿（用于抵抗离心力）
-        // 当向左转时，机器人需要向右倾斜一点
-        pitch_compensation = atan2f(centrifugal_force, mass * 9.81f);
-
-        // 根据旋转方向调整符号
-        if (yaw_rate_cmd > 0) {
-            // 向左转，左腿需要更负，右腿需要更正
-            pitch_compensation = -pitch_compensation;
-        }
 
         float pitch_L = -pitch;
         float pitch_rate_L = -pitch_rate;
@@ -400,30 +377,14 @@ int main(int argc, char **argv) {
         printf("target len: %.3f, left len: %.3f, right len: %.3f\n", target_L0, left_leg->L0, right_leg->L0);
         float wheel_torque_L, wheel_torque_R;
 
-        if (fabs(yaw_rate_cmd) > 0.01f) {  // 有旋转指令时
-            // 前馈力矩：用于产生旋转
-            float feedforward_torque = 0.5f * yaw_rate_cmd;  // 比例系数需要调整
-
-            // 反馈力矩：LQR输出用于平衡
-            float feedback_L = lqr_out_L[0];
-            float feedback_R = lqr_out_R[0];
-
-            // 组合：前馈用于旋转，反馈用于平衡
-            wheel_torque_L = feedback_L + feedforward_torque;
-            wheel_torque_R = feedback_R - feedforward_torque;  // 差速
-        } else {
-            // 无旋转时，只用LQR输出
-            wheel_torque_L = lqr_out_L[0];
-            wheel_torque_R = lqr_out_R[0];
-        }
+        wheel_torque_L = lqr_out_L[0] + turn_T;
+        wheel_torque_R = lqr_out_R[0] + turn_T;
 
         if (wheel_torque_L > WHEEL_TORCH_MAX) wheel_torque_L = WHEEL_TORCH_MAX;
         if (wheel_torque_L < -WHEEL_TORCH_MAX) wheel_torque_L = -WHEEL_TORCH_MAX;
         if (wheel_torque_R > WHEEL_TORCH_MAX) wheel_torque_R = WHEEL_TORCH_MAX;
         if (wheel_torque_R < -WHEEL_TORCH_MAX) wheel_torque_R = -WHEEL_TORCH_MAX;
 
-        printf("L_err:[%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\n", err_L[0], err_L[1], err_L[2], err_L[3], err_L[4], err_L[5]);
-        printf("R_err:[%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\n", err_R[0], err_R[1], err_R[2], err_R[3], err_R[4], err_R[5]);
         printf("wheel_L_torque: %.3f, wheel_R_torque: %.3f, turn_T: %.3f, raw: %.3f,%.3f\n", wheel_torque_L, wheel_torque_R, turn_T, lqr_out_L[0], lqr_out_R[0]);
         wb_motor_set_torque(wheel_L, wheel_torque_L);
         wb_motor_set_torque(wheel_R, wheel_torque_R);
