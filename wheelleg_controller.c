@@ -25,6 +25,10 @@ const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 // };
+#define FILTER_ALPHA 0.02f
+#define V_MAX 2.0f
+#define W_MAX 0.005f
+#define L_DELTA_MAX 0.001f
 
 #define TIME_STEP 4
 #define DT ((float)TIME_STEP / 1000.0f)
@@ -207,7 +211,7 @@ int main(int argc, char **argv) {
     float lqr_out_L[2], lqr_out_R[2];
     float err_L[6] = {0}, err_R[6] = {0};
 
-    float target_L0 = 0.8f;
+    float target_L0 = 0.9f;
     float target_v = 0.0f;
     float smooth_target_v = 0.0f;
     float target_x_ref = 0.0f;
@@ -227,11 +231,11 @@ int main(int argc, char **argv) {
 
     float current_time = 0.0f;
 
-    Keyboard_Init(TIME_STEP);
+    Keyboard_Init(TIME_STEP, V_MAX, W_MAX, L_DELTA_MAX);
 
     xvEstimateKF_Init(&vaEstimateKF); // 初始化卡尔曼滤波器（参考observe_task.c）
 
-    float filter_alpha = 0.03f; // 一阶滤波系数，取值0~1，越小越平滑
+    float filter_alpha = FILTER_ALPHA; // 一阶滤波系数，取值0~1，越小越平滑
 
     while (wb_robot_step(TIME_STEP) != -1) {
         current_time += (float)TIME_STEP / 1000.0f;

@@ -2,8 +2,15 @@
 #include <webots/keyboard.h>
 #include <stdbool.h>
 
-void Keyboard_Init(int time_step) {
+static float v_max = 2.0f;
+static float w_max = 0.005f;
+static float l_delta_max = 0.001f;
+
+void Keyboard_Init(int time_step, float v, float w, float l_delta) {
     wb_keyboard_enable(time_step);
+    v_max = v;
+    w_max = w;
+    l_delta_max = l_delta;
 }
 
 void Keyboard_Update(float *target_v, float *target_L0, float *target_turn) {
@@ -33,12 +40,12 @@ void Keyboard_Update(float *target_v, float *target_L0, float *target_turn) {
                 break;
             case 'Q':
             case 'q':
-                *target_L0 += 0.001f;
+                *target_L0 += l_delta_max;
                 if (*target_L0 > 1.2f) *target_L0 = 1.2f;
                 break;
             case 'E':
             case 'e':
-                *target_L0 -= 0.001f;
+                *target_L0 -= l_delta_max;
                 if (*target_L0 < 0.5f) *target_L0 = 0.6f;
                 break;
             default:
@@ -47,14 +54,14 @@ void Keyboard_Update(float *target_v, float *target_L0, float *target_turn) {
     }
 
     if (w_pressed) {
-        *target_v = 1.0f; // 前进定值速度
+        *target_v = v_max; // 前进定值速度
     } else if (s_pressed) {
-        *target_v = -1.0f; // 后退定值速度
+        *target_v = -v_max; // 后退定值速度
     } else {
         *target_v = 0.0f; // 松开时减速到0
     }
 
-    float turn_speed = 0.001f;
+    float turn_speed = w_max;
     if (a_pressed) {
         *target_turn += turn_speed; // 左转
     } else if (d_pressed) {
