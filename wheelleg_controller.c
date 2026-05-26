@@ -25,7 +25,7 @@ const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 // };
-#define FILTER_ALPHA 0.02f
+#define FILTER_ALPHA 0.01f
 #define V_MAX 2.0f
 #define W_MAX 0.005f
 #define L_DELTA_MAX 0.001f
@@ -225,6 +225,11 @@ int main(int argc, char **argv) {
 
     float roll_set = 0.0f;
 
+    // 跳跃状态机
+    int jump_flag = 0;    // 0=正常, 1=下蹲压缩, 2=上升加速, 3=空中缩腿
+    int jump_time = 0;
+    float last_target_L0 = 0.9f;
+
     PID_Controller turn_pid = {10.0f, 0.0f, 0.0f, 0, 0, 0};
     PID_Controller roll_pid = {1.0f, 0.0f, 0.0f, 0, 0, 0};
     PID_Controller tp_pid = {3.0f, 0.0f, 0.0f, 0, 0, 0};
@@ -239,7 +244,8 @@ int main(int argc, char **argv) {
 
     while (wb_robot_step(TIME_STEP) != -1) {
         current_time += (float)TIME_STEP / 1000.0f;
-        Keyboard_Update(&target_v, &target_L0, &turn_set);
+        int jump_trigger = 0;
+        Keyboard_Update(&target_v, &target_L0, &turn_set, &jump_trigger);
 
         // 一阶滤波实现平滑加减速
         smooth_target_v = filter_alpha * target_v + (1.0f - filter_alpha) * smooth_target_v;
@@ -324,21 +330,6 @@ int main(int argc, char **argv) {
         VMC_calc_1(right_leg, pitch_R, pitch_rate_R, DT);
         printf("left theta: %.3f, right theta: %.3f\n", left_leg->theta * 180.0f / PI, right_leg->theta * 180.0f / PI);
 
-        // 防劈叉补偿
-        float theta_err = 0.0f - (left_leg->theta + right_leg->theta);
-        float leg_tp = PID_Calc(&tp_pid, theta_err, 0.0f);
-        // left_leg->Tp += leg_tp;
-        // right_leg->Tp += leg_tp;
-
-        // 横滚角补偿
-        float roll_f0 = roll_pid.kp * (roll_set - roll) - roll_pid.kd * roll_rate;
-
-        float cos_theta_L = cosf(left_leg->theta);
-        left_leg->F0 = MG / cos_theta_L + PID_Calc(&leg_l_pid, left_leg->L0, target_L0);
-        left_leg->F0 -= roll_f0; // 左腿减去roll_f0
-
-        VMC_calc_2(left_leg);
-
         err_R[0] = right_leg->theta - 0.0f;
         err_R[1] = right_leg->d_theta - 0.0f;
         err_R[2] = (x_filter - target_x_ref);
@@ -347,23 +338,112 @@ int main(int argc, char **argv) {
         err_R[5] = (pitch_rate_R - 0.0f);
 
         LQR_Calc(lqr_out_R, lqr_K, err_R);
-        right_leg->Tp = lqr_out_R[1] + leg_tp;
+        right_leg->Tp = lqr_out_R[1];
 
-        float cos_theta_R = cosf(right_leg->theta);
-        right_leg->F0 = MG / cos_theta_R + PID_Calc(&leg_r_pid, right_leg->L0, target_L0);
-        right_leg->F0 += roll_f0; // 右腿加上roll_f0
+        // 防劈叉补偿
+        float theta_err = 0.0f - (left_leg->theta + right_leg->theta);
+        float leg_tp = PID_Calc(&tp_pid, theta_err, 0.0f);
+        left_leg->Tp += leg_tp;
+        right_leg->Tp += leg_tp;
 
+        // 横滚角补偿
+        float roll_f0 = roll_pid.kp * (roll_set - roll) - roll_pid.kd * roll_rate;
+
+        // ====== 跳跃状态机 ======
+        if (jump_trigger && jump_flag == 0) {
+            jump_flag = 1;
+            jump_time = 0;
+            last_target_L0 = target_L0;  // 保存跳跃前目标腿长
+        }
+
+        float jump_target_L0;
+
+        if (jump_flag == 1) {
+            // 下蹲压缩阶段
+            jump_target_L0 = 0.70f;
+            left_leg->F0 = MG / cosf(left_leg->theta) + PID_Calc(&leg_l_pid, left_leg->L0, jump_target_L0);
+            right_leg->F0 = MG / cosf(right_leg->theta) + PID_Calc(&leg_r_pid, right_leg->L0, jump_target_L0);
+
+            if (left_leg->L0 < 0.70f && right_leg->L0 < 0.70f)
+                jump_time++;
+            if (jump_time >= 10) {
+                jump_time = 0;
+                jump_flag = 2;  // 进入上升加速阶段
+            }
+        } else if (jump_flag == 2) {
+            // 上升加速阶段
+            jump_target_L0 = 1.10f;
+            left_leg->F0 = MG / cosf(left_leg->theta) + PID_Calc(&leg_l_pid, left_leg->L0, jump_target_L0);
+            right_leg->F0 = MG / cosf(right_leg->theta) + PID_Calc(&leg_r_pid, right_leg->L0, jump_target_L0);
+
+            if (left_leg->L0 > 1.00f && right_leg->L0 > 1.00f)
+                jump_time++;
+            if (jump_time >= 2) {
+                jump_time = 0;
+                jump_flag = 3;  // 进入空中缩腿阶段
+            }
+        } else if (jump_flag == 3) {
+            // 空中缩腿阶段
+            jump_target_L0 = 0.70f;
+            left_leg->F0 = PID_Calc(&leg_l_pid, left_leg->L0, jump_target_L0);
+            right_leg->F0 = PID_Calc(&leg_r_pid, right_leg->L0, jump_target_L0);
+
+            if (left_leg->L0 < 0.70f && right_leg->L0 < 0.70f)
+                jump_time++;
+            if (jump_time >= 3) {
+                jump_time = 0;
+                target_L0 = last_target_L0;  // 恢复目标腿长
+                jump_flag = 0;  // 跳跃结束
+            }
+        } else {
+            // 正常模式
+            left_leg->F0 = MG / cosf(left_leg->theta) + PID_Calc(&leg_l_pid, left_leg->L0, target_L0);
+            right_leg->F0 = MG / cosf(right_leg->theta) + PID_Calc(&leg_r_pid, right_leg->L0, target_L0);
+        }
+
+        // ====== 离地检测 ======
+        int left_ground = ground_detection(left_leg, Accel_b[2]);
+        int right_ground = ground_detection(right_leg, Accel_b[2]);
+
+        // ====== 离地特殊处理 ======
+        if ((left_ground && right_ground && jump_flag != 1 && jump_flag != 2) || jump_flag == 3) {
+            // 两腿同时离地时（排除跳跃压缩和上升阶段），或跳跃缩腿阶段
+            // 轮子扭矩清零，髋关节只保留theta/d_theta项
+            lqr_out_L[0] = 0.0f;
+            lqr_out_R[0] = 0.0f;
+            left_leg->Tp = lqr_K[6] * (left_leg->theta - 0.0f) + lqr_K[7] * (left_leg->d_theta - 0.0f) + leg_tp;
+            right_leg->Tp = lqr_K[6] * (right_leg->theta - 0.0f) + lqr_K[7] * (right_leg->d_theta - 0.0f) + leg_tp;
+            // 重置位移积分防止饱和
+            x_filter = 0.0f;
+            target_x_ref = 0.0f;
+        } else {
+            // 没有离地时施加横滚角补偿
+            if (jump_flag == 0) {
+                left_leg->F0 -= roll_f0;
+                right_leg->F0 += roll_f0;
+            }
+        }
+
+        // F0限幅
+        if (left_leg->F0 > 100.0f) left_leg->F0 = 100.0f;
+        if (left_leg->F0 < -100.0f) left_leg->F0 = -100.0f;
+        if (right_leg->F0 > 100.0f) right_leg->F0 = 100.0f;
+        if (right_leg->F0 < -100.0f) right_leg->F0 = -100.0f;
+
+        VMC_calc_2(left_leg);
         VMC_calc_2(right_leg);
 
-        if (left_leg->torque_set[0] > TORCH_MAX) left_leg->torque_set[0] = TORCH_MAX;
-        if (left_leg->torque_set[0] < -TORCH_MAX) left_leg->torque_set[0] = -TORCH_MAX;
-        if (left_leg->torque_set[1] > TORCH_MAX) left_leg->torque_set[1] = TORCH_MAX;
-        if (left_leg->torque_set[1] < -TORCH_MAX) left_leg->torque_set[1] = -TORCH_MAX;
+        // 力矩限幅（跳跃时允许更大扭矩，参考chassisR_task翻倍）
+        float torque_limit = (jump_flag >= 1 && jump_flag <= 3) ? TORCH_MAX * 2.0f : TORCH_MAX;
+        if (left_leg->torque_set[0] > torque_limit) left_leg->torque_set[0] = torque_limit;
+        if (left_leg->torque_set[0] < -torque_limit) left_leg->torque_set[0] = -torque_limit;
+        if (left_leg->torque_set[1] > torque_limit) left_leg->torque_set[1] = torque_limit;
+        if (left_leg->torque_set[1] < -torque_limit) left_leg->torque_set[1] = -torque_limit;
 
-        if (right_leg->torque_set[0] > TORCH_MAX) right_leg->torque_set[0] = TORCH_MAX;
-        if (right_leg->torque_set[0] < -TORCH_MAX) right_leg->torque_set[0] = -TORCH_MAX;
-        if (right_leg->torque_set[1] > TORCH_MAX) right_leg->torque_set[1] = TORCH_MAX;
-        if (right_leg->torque_set[1] < -TORCH_MAX) right_leg->torque_set[1] = -TORCH_MAX;
+        if (right_leg->torque_set[0] > torque_limit) right_leg->torque_set[0] = torque_limit;
+        if (right_leg->torque_set[0] < -torque_limit) right_leg->torque_set[0] = -torque_limit;
+        if (right_leg->torque_set[1] > torque_limit) right_leg->torque_set[1] = torque_limit;
+        if (right_leg->torque_set[1] < -torque_limit) right_leg->torque_set[1] = -torque_limit;
 
         wb_motor_set_torque(joint_LF, left_leg->torque_set[0]);
         wb_motor_set_torque(joint_LB, left_leg->torque_set[1]);
@@ -379,6 +459,7 @@ int main(int argc, char **argv) {
         float turn_T = turn_pid.kp * yaw_err - turn_pid.kd * yaw_rate;
 
         printf("target len: %.3f, left len: %.3f, right len: %.3f\n", target_L0, left_leg->L0, right_leg->L0);
+        printf("jump_flag: %d, left_ground: %d, right_ground: %d\n", jump_flag, left_ground, right_ground);
         float wheel_torque_L, wheel_torque_R;
 
         wheel_torque_L = lqr_out_L[0] + turn_T;

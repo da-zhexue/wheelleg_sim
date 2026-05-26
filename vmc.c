@@ -1,6 +1,7 @@
 #include "vmc.h"
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 
 static vmc_leg_t leg_left, leg_right;
 
@@ -99,8 +100,8 @@ bool ground_detection(vmc_leg_t *vmc, const float g) // 离地检测
     aver[leg][3]=vmc->FN;
 
     const float aver_fn=0.25f*aver[leg][0]+0.25f*aver[leg][1]+0.25f*aver[leg][2]+0.25f*aver[leg][3];//对支持力进行均值滤波
-
-    if(aver_fn<3.0f)
+    printf("aver_fn: %f\n", aver_fn);
+    if(aver_fn < 1.0f || aver_fn > 50.0f)
         return 1;
 
     return 0;
