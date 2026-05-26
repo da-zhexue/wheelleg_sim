@@ -230,11 +230,13 @@ int main(int argc, char **argv) {
     int jump_time = 0;
     float last_target_L0 = 0.9f;
 
-    PID_Controller turn_pid = {10.0f, 0.0f, 0.0f, 0, 0, 0};
-    PID_Controller roll_pid = {1.0f, 0.0f, 0.0f, 0, 0, 0};
-    PID_Controller tp_pid = {3.0f, 0.0f, 0.0f, 0, 0, 0};
+    PID_Controller turn_pid = {1.5f, 0.0f, 0.3f, 0, 0, 0};
+    PID_Controller roll_pid = {15.0f, 0.0f, 0.0f, 0, 0, 0};
+    PID_Controller tp_pid = {30.0f, 0.0f, 1.0f, 0, 0, 0};
 
     float current_time = 0.0f;
+    int fall_time = 0;
+    int fall_flag = 0;
 
     Keyboard_Init(TIME_STEP, V_MAX, W_MAX, L_DELTA_MAX);
 
@@ -322,6 +324,29 @@ int main(int argc, char **argv) {
         err_L[4] = (pitch_L - pitch_compensation);
         err_L[5] = (pitch_rate_L - 0.0f);
 
+        if(pitch > 0.262f || pitch < -0.262f)
+        {
+            fall_flag = 1;
+            fall_time = 0;
+        }
+        else
+        {
+            fall_time++;
+            if(fall_time > 100)
+            {
+                fall_flag = 0;
+            }
+        }
+        if(fall_flag)
+        {
+            // err_L[0] = 0.0f;
+            // err_L[1] = 0.0f;
+            err_L[2] = 0.0f;
+            err_L[3] = 0.0f;
+            // err_L[4] = 0.0f;
+            // err_L[5] = 0.0f;
+        }
+
         LQR_Calc(lqr_out_L, lqr_K, err_L);
         left_leg->Tp = lqr_out_L[1];
 
@@ -336,6 +361,16 @@ int main(int argc, char **argv) {
         err_R[3] = (v_filter - smooth_target_v);
         err_R[4] = (pitch_R + pitch_compensation);
         err_R[5] = (pitch_rate_R - 0.0f);
+
+        if(fall_flag)
+        {
+            // err_R[0] = 0.0f;
+            // err_R[1] = 0.0f;
+            err_R[2] = 0.0f;
+            err_R[3] = 0.0f;
+            // err_R[4] = 0.0f;
+            // err_R[5] = 0.0f;
+        }
 
         LQR_Calc(lqr_out_R, lqr_K, err_R);
         right_leg->Tp = lqr_out_R[1];
@@ -434,7 +469,7 @@ int main(int argc, char **argv) {
         VMC_calc_2(right_leg);
 
         // 力矩限幅（跳跃时允许更大扭矩，参考chassisR_task翻倍）
-        float torque_limit = (jump_flag >= 1 && jump_flag <= 3) ? TORCH_MAX * 2.0f : TORCH_MAX;
+        float torque_limit = (jump_flag >= 1 && jump_flag <= 3) ? TORCH_MAX  : TORCH_MAX;
         if (left_leg->torque_set[0] > torque_limit) left_leg->torque_set[0] = torque_limit;
         if (left_leg->torque_set[0] < -torque_limit) left_leg->torque_set[0] = -torque_limit;
         if (left_leg->torque_set[1] > torque_limit) left_leg->torque_set[1] = torque_limit;
@@ -462,6 +497,10 @@ int main(int argc, char **argv) {
         printf("jump_flag: %d, left_ground: %d, right_ground: %d\n", jump_flag, left_ground, right_ground);
         float wheel_torque_L, wheel_torque_R;
 
+        if(fall_flag)
+        {
+            turn_T = 0.0f;
+        }
         wheel_torque_L = lqr_out_L[0] + turn_T;
         wheel_torque_R = lqr_out_R[0] + turn_T;
 
