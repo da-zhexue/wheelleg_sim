@@ -25,25 +25,25 @@ const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 // };
-#define FILTER_ALPHA 0.02f
-#define V_MAX 2.0f
-#define W_MAX 0.005f
-#define L_DELTA_MAX 0.01f
+#define FILTER_ALPHA 0.02f // 控制速度低通滤波
+#define V_MAX 2.0f // 控制速度
+#define W_MAX 0.005f // 控制转向角速度
+#define L_DELTA_MAX 0.01f // 腿长变化速度
 
-#define TIME_STEP 4
+#define TIME_STEP 4 // 控制周期
 #define DT ((float)TIME_STEP / 1000.0f)
-
-#define MAX_POS_ERR 0.5f
-#define ACCEL_LIMIT 1.0f
 
 #define L1 0.8f // 大腿长
 #define L2 0.8f // 小腿长
-#define TORCH_MAX 30.0f
-#define WHEEL_TORCH_MAX 5.0f
+#define TORQUE_MAX 30.0f // 关节电机力矩限制
+#define WHEEL_TORQUE_MAX 5.0f // 轮毂电机力矩限制
 #define MG 1.5f // 机器人总重力的一半(单腿承重)
-#define WHEEL_RAD 0.15f
-#define ACCEL_LPF 0.0089f // 加速度低通滤波系数（参考INS_task）
+#define WHEEL_RAD 0.15f // 轮子半径
+#define ACCEL_LPF 0.0089f // 加速度低通滤波系数
 
+float pitch_compensation = -0.035f; // 旋转时的俯仰角补偿
+
+// 一个简单的PID实现
 typedef struct {
     float kp, ki, kd;
     float err, last_err, integral;
@@ -57,6 +57,7 @@ float PID_Calc(PID_Controller *pid, float current, float target) {
     return pid->kp * pid->err + pid->ki * pid->integral + pid->kd * derivative;
 }
 
+// x、v卡尔曼滤波器，用于获得一个较为准确的x、v
 KalmanFilter_t vaEstimateKF;  // 滤波器实例
 float vel_acc[2];             // 输出：vel_acc[0]是滤波后的速度
 
@@ -87,10 +88,7 @@ void xvEstimateKF_Update(KalmanFilter_t *EstimateKF, float acc, float vel)
     vel_acc[0] = EstimateKF->FilteredValue[0]; // v_filter
 }
 
-float yaw_rate_cmd = 0.0f;      // 期望偏航角速度
-float pitch_compensation = -0.035f; // 旋转时的俯仰角补偿
-
-// 重力加速度（地球坐标系，Z轴向上，参考INS_task）
+// 重力加速度（地球坐标系，Z轴向上）
 static const float GRAVITY[3] = {0.0f, 0.0f, 9.81f};
 float MotionAccel_b[3] = {0};  // 机体坐标系运动加速度
 float MotionAccel_n[3] = {0};  // 地球坐标系运动加速度
@@ -118,7 +116,7 @@ void EulerToQuaternion(float yaw, float pitch, float roll, float q[4])
 }
 
 /**
- * @brief 地球坐标系 -> 机体坐标系（参考INS_task.c）
+ * @brief 地球坐标系 -> 机体坐标系
  */
 void EarthFrameToBodyFrame(const float *vecEF, float *vecBF, const float *q)
 {
@@ -136,7 +134,7 @@ void EarthFrameToBodyFrame(const float *vecEF, float *vecBF, const float *q)
 }
 
 /**
- * @brief 机体坐标系 -> 地球坐标系（参考INS_task.c）
+ * @brief 机体坐标系 -> 地球坐标系
  */
 void BodyFrameToEarthFrame(const float *vecBF, float *vecEF, const float *q)
 {
@@ -184,6 +182,7 @@ int main(int argc, char **argv) {
     wb_position_sensor_enable(ecd_wheel_L, TIME_STEP);
     wb_position_sensor_enable(ecd_wheel_R, TIME_STEP);
 
+    // webots中使用力矩控制或者速度控制需要将位置设为INFINITY
     wb_motor_set_position(wheel_L, INFINITY);
     wb_motor_set_position(wheel_R, INFINITY);
     wb_motor_set_torque(wheel_L, 0.0);
@@ -194,6 +193,7 @@ int main(int argc, char **argv) {
     wb_motor_set_position(joint_RF, INFINITY);
     wb_motor_set_position(joint_RB, INFINITY);
 
+    // 下面设定位置模式用于测试极性
     // wb_motor_set_position(joint_LF, 0);
     // wb_motor_set_position(joint_LB, 0);
     // wb_motor_set_position(joint_RF, 0);
@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
     VMC_init(left_leg, L1, L2);
     VMC_init(right_leg, L1, L2);
 
-    PID_Controller leg_l_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0}; // 腿长PID参数参考硬件
+    PID_Controller leg_l_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0}; // 腿长PID
     PID_Controller leg_r_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0};
 
     float lqr_out_L[2], lqr_out_R[2];
@@ -237,9 +237,10 @@ int main(int argc, char **argv) {
     int fall_time = 0;
     int fall_flag = 0;
 
+    //ws前进后退，ad旋转，qe腿长调节
     Keyboard_Init(TIME_STEP, V_MAX, W_MAX, L_DELTA_MAX);
 
-    xvEstimateKF_Init(&vaEstimateKF); // 初始化卡尔曼滤波器（参考observe_task.c）
+    xvEstimateKF_Init(&vaEstimateKF); // 初始化卡尔曼滤波器
 
     float filter_alpha = FILTER_ALPHA; // 一阶滤波系数，取值0~1，越小越平滑
 
@@ -248,12 +249,13 @@ int main(int argc, char **argv) {
         int jump_trigger = 0;
         Keyboard_Update(&target_v, &target_L0, &turn_set, &jump_trigger);
 
-        // 一阶滤波实现平滑加减速
+        // 平滑加减速
         smooth_target_v = filter_alpha * target_v + (1.0f - filter_alpha) * smooth_target_v;
 
         target_x_ref += smooth_target_v * DT;
 
-        const double *rpy = wb_inertial_unit_get_roll_pitch_yaw(inertial);
+        const double *rpy = wb_inertial_unit_get_roll_pitch_yaw(inertial); 
+        // 至于为什么实际数据顺序和函数名不一样可能与安装方向有关
         double pitch = rpy[0];
         double roll = rpy[1];
         double yaw = rpy[2];
@@ -274,6 +276,7 @@ int main(int argc, char **argv) {
         right_leg->phi1 = wb_position_sensor_get_value(ecd_RB) + PI * 150.0f / 180.0f;
 
         // 轮子速度计算（用于卡尔曼滤波测量）
+        // 这里不能用webots的获得轮子速度的函数，该函数似乎只能获得绝对值？
         x_l = w_pos_L / 2.0f * WHEEL_RAD;
         x_r = w_pos_R / 2.0f * WHEEL_RAD;
         v_l = (x_l - last_x_l) / DT;
@@ -282,7 +285,7 @@ int main(int argc, char **argv) {
         last_x_l = x_l;
         last_x_r = x_r;
 
-        // 坐标系变换：用确认的yaw/pitch/roll计算四元数（不直接用webots的quaternion）
+        // 坐标系变换：用确认的yaw/pitch/roll计算四元数（因为欧拉角顺序不一样，不直接用webots的quaternion）
         float q[4];
         EulerToQuaternion((float)yaw, (float)pitch, (float)roll, q);
 
@@ -292,7 +295,7 @@ int main(int argc, char **argv) {
         float gravity_b[3];
         EarthFrameToBodyFrame(GRAVITY, gravity_b, q);
 
-        // 运动加速度 = 加速度计读数 - 重力投影（一阶低通滤波，同INS_task.c）
+        // 运动加速度 = 加速度计读数 - 重力投影（一阶低通滤波）
         for (uint8_t i = 0; i < 3; i++)
         {
             MotionAccel_b[i] = (Accel_b[i] - gravity_b[i]) * DT / (ACCEL_LPF + DT)
@@ -300,12 +303,12 @@ int main(int argc, char **argv) {
         }
         BodyFrameToEarthFrame(MotionAccel_b, MotionAccel_n, q);
 
-        // 死区滤波（参考INS_task.c）
+        // 死区滤波
         if (fabsf(MotionAccel_n[0]) < 0.02f) MotionAccel_n[0] = 0.0f;
         if (fabsf(MotionAccel_n[1]) < 0.02f) MotionAccel_n[1] = 0.0f;
         if (fabsf(MotionAccel_n[2]) < 0.04f) MotionAccel_n[2] = 0.0f;
 
-        // 卡尔曼滤波融合加速度计与轮速（参考observe_task.c）
+        // 卡尔曼滤波融合加速度计与轮速
         xvEstimateKF_Update(&vaEstimateKF, -MotionAccel_b[0], wheel_v);
         v_filter = vel_acc[0];                  // 滤波后速度
         x_filter += v_filter * DT;              // 积分得位移
@@ -313,6 +316,7 @@ int main(int argc, char **argv) {
         printf("target_x: %.3f x: %.3f\n", target_x_ref, x_filter);
         printf("target_v: %.3f v: %.3f\n", smooth_target_v, v_filter);
 
+        // 左腿VMC->LQR
         float pitch_L = -pitch;
         float pitch_rate_L = -pitch_rate;
         VMC_calc_1(left_leg, pitch_L, pitch_rate_L, DT);
@@ -323,6 +327,9 @@ int main(int argc, char **argv) {
         err_L[4] = (pitch_L - pitch_compensation);
         err_L[5] = (pitch_rate_L - 0.0f);
 
+        // 自创自救措施，倒地但是轮子还能够地时，LQR不计算速度误差
+        // 目前自救过程还是有点抽象的，后续看看怎么改进
+        // 后续还要增加判断倒地角度更大时要用别的自救策略
         if(pitch > 0.32f || pitch < -0.32f)
         {
             fall_flag = 1;
@@ -338,17 +345,15 @@ int main(int argc, char **argv) {
         }
         if(fall_flag)
         {
-            // err_L[0] = 0.0f;
-            // err_L[1] = 0.0f;
+
             err_L[2] = 0.0f;
             err_L[3] = 0.0f;
-            // err_L[4] = 0.0f;
-            // err_L[5] = 0.0f;
         }
 
         LQR_Calc(lqr_out_L, lqr_K, err_L);
         left_leg->Tp = lqr_out_L[1];
 
+        // 右腿VMC->LQR
         float pitch_R = pitch;
         float pitch_rate_R = pitch_rate;
         VMC_calc_1(right_leg, pitch_R, pitch_rate_R, DT);
@@ -363,12 +368,8 @@ int main(int argc, char **argv) {
 
         if(fall_flag)
         {
-            // err_R[0] = 0.0f;
-            // err_R[1] = 0.0f;
             err_R[2] = 0.0f;
             err_R[3] = 0.0f;
-            // err_R[4] = 0.0f;
-            // err_R[5] = 0.0f;
         }
 
         LQR_Calc(lqr_out_R, lqr_K, err_R);
@@ -383,7 +384,7 @@ int main(int argc, char **argv) {
         // 横滚角补偿
         float roll_f0 = roll_pid.kp * (roll_set - roll) - roll_pid.kd * roll_rate;
 
-        // ====== 跳跃状态机 ======
+        // 跳跃状态机，照搬达妙
         if (jump_trigger && jump_flag == 0) {
             jump_flag = 1;
             jump_time = 0;
@@ -435,11 +436,11 @@ int main(int argc, char **argv) {
             right_leg->F0 = MG / cosf(right_leg->theta) + PID_Calc(&leg_r_pid, right_leg->L0, target_L0);
         }
 
-        // ====== 离地检测 ======
+        // 离地检测 
         int left_ground = ground_detection(left_leg, Accel_b[2]);
         int right_ground = ground_detection(right_leg, Accel_b[2]);
 
-        // ====== 离地特殊处理 ======
+        // 离地特殊处理
         if ((left_ground && right_ground && jump_flag != 1 && jump_flag != 2) || jump_flag == 3) {
             // 两腿同时离地时（排除跳跃压缩和上升阶段），或跳跃缩腿阶段
             // 轮子扭矩清零，髋关节只保留theta/d_theta项
@@ -467,8 +468,8 @@ int main(int argc, char **argv) {
         VMC_calc_2(left_leg);
         VMC_calc_2(right_leg);
 
-        // 力矩限幅（跳跃时允许更大扭矩，参考chassisR_task翻倍）
-        float torque_limit = (jump_flag >= 1 && jump_flag <= 3) ? TORCH_MAX  : TORCH_MAX;
+        // 力矩限幅（跳跃时允许更大扭矩，但我懒得改电机里设置的最大力矩，所以这里力矩都限制为30）
+        float torque_limit = (jump_flag >= 1 && jump_flag <= 3) ? TORQUE_MAX  : TORQUE_MAX;
         if (left_leg->torque_set[0] > torque_limit) left_leg->torque_set[0] = torque_limit;
         if (left_leg->torque_set[0] < -torque_limit) left_leg->torque_set[0] = -torque_limit;
         if (left_leg->torque_set[1] > torque_limit) left_leg->torque_set[1] = torque_limit;
@@ -486,7 +487,7 @@ int main(int argc, char **argv) {
 
         // 偏航角补偿 (Turn)
         float yaw_err = turn_set - yaw;
-        // 应对 yaw_err 的跳变（循环限幅求最短路径）
+        // 应对 yaw_err 的跳变
         if (yaw_err > PI) yaw_err -= 2.0f * PI;
         else if (yaw_err < -PI) yaw_err += 2.0f * PI;
 
@@ -503,10 +504,10 @@ int main(int argc, char **argv) {
         wheel_torque_L = lqr_out_L[0] + turn_T;
         wheel_torque_R = lqr_out_R[0] + turn_T;
 
-        if (wheel_torque_L > WHEEL_TORCH_MAX) wheel_torque_L = WHEEL_TORCH_MAX;
-        if (wheel_torque_L < -WHEEL_TORCH_MAX) wheel_torque_L = -WHEEL_TORCH_MAX;
-        if (wheel_torque_R > WHEEL_TORCH_MAX) wheel_torque_R = WHEEL_TORCH_MAX;
-        if (wheel_torque_R < -WHEEL_TORCH_MAX) wheel_torque_R = -WHEEL_TORCH_MAX;
+        if (wheel_torque_L > WHEEL_TORQUE_MAX) wheel_torque_L = WHEEL_TORQUE_MAX;
+        if (wheel_torque_L < -WHEEL_TORQUE_MAX) wheel_torque_L = -WHEEL_TORQUE_MAX;
+        if (wheel_torque_R > WHEEL_TORQUE_MAX) wheel_torque_R = WHEEL_TORQUE_MAX;
+        if (wheel_torque_R < -WHEEL_TORQUE_MAX) wheel_torque_R = -WHEEL_TORQUE_MAX;
 
         printf("wheel_L_torque: %.3f, wheel_R_torque: %.3f, turn_T: %.3f, raw: %.3f,%.3f\n", wheel_torque_L, wheel_torque_R, turn_T, lqr_out_L[0], lqr_out_R[0]);
         wb_motor_set_torque(wheel_L, wheel_torque_L);
