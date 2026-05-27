@@ -18,17 +18,17 @@ const float lqr_K[12] = {
    37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
 };
 // const float lqr_K[12] = {
-//     -34.2377f, -1.0666f, -1.5904f, -7.2944f, -115.4345f, -7.1831f,
-//     78.5909f, 1.9033f, -0.1540f, -0.7067f, -14.2411f, -0.8282f
+//     -10.3087f, -0.7176f, -1.1702f, -5.2173f, -42.9164f, -5.5554f,
+//    37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
 // };
 // const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 // };
-#define FILTER_ALPHA 0.01f
+#define FILTER_ALPHA 0.02f
 #define V_MAX 2.0f
 #define W_MAX 0.005f
-#define L_DELTA_MAX 0.001f
+#define L_DELTA_MAX 0.01f
 
 #define TIME_STEP 4
 #define DT ((float)TIME_STEP / 1000.0f)
@@ -41,7 +41,7 @@ const float lqr_K[12] = {
 #define TORCH_MAX 30.0f
 #define WHEEL_TORCH_MAX 5.0f
 #define MG 1.5f // 机器人总重力的一半(单腿承重)
-#define WHEEL_RAD 0.1f
+#define WHEEL_RAD 0.15f
 #define ACCEL_LPF 0.0089f // 加速度低通滤波系数（参考INS_task）
 
 typedef struct {
@@ -88,8 +88,7 @@ void xvEstimateKF_Update(KalmanFilter_t *EstimateKF, float acc, float vel)
 }
 
 float yaw_rate_cmd = 0.0f;      // 期望偏航角速度
-float pitch_compensation = 0.0f; // 旋转时的俯仰角补偿
-float centrifugal_force = 0.0f;  // 离心力补偿
+float pitch_compensation = -0.035f; // 旋转时的俯仰角补偿
 
 // 重力加速度（地球坐标系，Z轴向上，参考INS_task）
 static const float GRAVITY[3] = {0.0f, 0.0f, 9.81f};
@@ -324,7 +323,7 @@ int main(int argc, char **argv) {
         err_L[4] = (pitch_L - pitch_compensation);
         err_L[5] = (pitch_rate_L - 0.0f);
 
-        if(pitch > 0.262f || pitch < -0.262f)
+        if(pitch > 0.32f || pitch < -0.32f)
         {
             fall_flag = 1;
             fall_time = 0;
