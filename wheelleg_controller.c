@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
         right_leg->phi1 = wb_position_sensor_get_value(ecd_RB) + PI * 150.0f / 180.0f;
 
         // 轮子速度计算（用于卡尔曼滤波测量）
-        // 这里不能用webots的获得轮子速度的函数，该函数似乎只能获得绝对值？
+        // 这里不能用webots的获得轮子速度的函数，该函数似乎只能获得绝对值？ 
         x_l = w_pos_L / 2.0f * WHEEL_RAD;
         x_r = w_pos_R / 2.0f * WHEEL_RAD;
         v_l = (x_l - last_x_l) / DT;
