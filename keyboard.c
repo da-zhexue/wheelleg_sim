@@ -46,7 +46,7 @@ void Keyboard_Update(float *target_v, float *target_L0, float *target_turn, int 
             case 'E':
             case 'e':
                 *target_L0 -= l_delta_max;
-                if (*target_L0 < 0.5f) *target_L0 = 0.6f;
+                if (*target_L0 < 0.6f) *target_L0 = 0.6f;
                 break;
             case ' ':
                 *jump_trigger = 1;

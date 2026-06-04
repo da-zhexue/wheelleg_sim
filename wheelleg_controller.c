@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 
 #include "vmc.h"
 #include "lqr.h"
@@ -14,7 +15,7 @@
 #include "keyboard.h"
 
 const float lqr_K[12] = {
-    -10.3087f, -0.7176f, -1.1702f, -5.2173f, -42.9164f, -5.5554f,
+    -15.7962f, -2.1477f, -0.1130f, -5.9228f, -127.9996f, -29.9050f,
    37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
 };
 // const float lqr_K[12] = {
@@ -28,25 +29,26 @@ const float lqr_K[12] = {
 #define FILTER_ALPHA 0.02f // 控制速度低通滤波
 #define V_MAX 2.0f // 控制速度
 #define W_MAX 0.005f // 控制转向角速度
-#define L_DELTA_MAX 0.01f // 腿长变化速度
+#define L_DELTA_MAX 0.002f // 腿长变化速度
 
 #define TIME_STEP 4 // 控制周期
 #define DT ((float)TIME_STEP / 1000.0f)
 
-#define L1 0.8f // 大腿长
+#define L1 0.64f // 大腿长
 #define L2 0.8f // 小腿长
-#define TORQUE_MAX 30.0f // 关节电机力矩限制
-#define WHEEL_TORQUE_MAX 5.0f // 轮毂电机力矩限制
+#define TORQUE_MAX 10.0f // 关节电机力矩限制
+#define WHEEL_TORQUE_MAX 3.0f // 轮毂电机力矩限制
 #define MG 1.5f // 机器人总重力的一半(单腿承重)
 #define WHEEL_RAD 0.15f // 轮子半径
 #define ACCEL_LPF 0.0089f // 加速度低通滤波系数
 
-float pitch_compensation = -0.035f; // 旋转时的俯仰角补偿
+float pitch_compensation = 0.028f; // 旋转时的俯仰角补偿
 
 // 一个简单的PID实现
 typedef struct {
     float kp, ki, kd;
     float err, last_err, integral;
+    float max;
 } PID_Controller;
 
 float PID_Calc(PID_Controller *pid, float current, float target) {
@@ -54,7 +56,10 @@ float PID_Calc(PID_Controller *pid, float current, float target) {
     pid->integral += pid->err * DT;
     float derivative = (pid->err - pid->last_err) / DT;
     pid->last_err = pid->err;
-    return pid->kp * pid->err + pid->ki * pid->integral + pid->kd * derivative;
+    float out = pid->kp * pid->err + pid->ki * pid->integral + pid->kd * derivative;
+    if (out > pid->max) out = pid->max;
+    if (out < -pid->max) out = -pid->max;
+    return out;
 }
 
 // x、v卡尔曼滤波器，用于获得一个较为准确的x、v
@@ -151,6 +156,72 @@ void BodyFrameToEarthFrame(const float *vecBF, float *vecEF, const float *q)
                        (0.5f - q[1] * q[1] - q[2] * q[2]) * vecBF[2]);
 }
 
+FILE *csv_file = NULL;
+int csv_initialized = 0;
+char csv_filename[256];
+
+// 新增：初始化CSV文件
+void init_csv_logging() {
+    // 生成带时间戳的文件名
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(csv_filename, sizeof(csv_filename),
+             "log/robot_log_%Y%m%d_%H%M%S.csv", tm_info);
+
+    csv_file = fopen(csv_filename, "w");
+    if (csv_file == NULL) {
+        printf("无法创建CSV文件!\n");
+        return;
+    }
+
+    // 写入CSV表头
+    fprintf(csv_file, "Time,Pitch(deg),PitchRate(rad/s),");
+    //fprintf(csv_file, "YawTarget(deg),Yaw(deg),YawRate(rad/s),");
+    fprintf(csv_file, "WheelVelocity,");
+    fprintf(csv_file, "Target_X,Filtered_X,Target_V,Filtered_V,");
+    fprintf(csv_file, "LeftTheta(deg),RightTheta(deg),LeftL0,RightL0,");
+    //fprintf(csv_file, "JumpFlag,FallFlag,Turn_T,");
+    fprintf(csv_file, "LeftTp,LeftF0,LeftTorque0,LeftTorque1,");
+    fprintf(csv_file, "RightTp,RightF0,RightTorque0,RightTorque1,");
+    fprintf(csv_file, "WheelTorque_L,WheelTorque_R,");
+    fprintf(csv_file, "LQR0,LQR3,LQR4\n");
+
+    csv_initialized = 1;
+    printf("CSV日志文件已创建: %s\n", csv_filename);
+}
+
+// 新增：写入一行数据到CSV
+void write_csv_row(float current_time,
+                   float pitch_deg, float pitch_rate,
+                   //float yaw_target_deg, float yaw_deg, float yaw_rate,
+                   float wheel_v,
+                   float target_x_ref, float x_filter,
+                   float smooth_target_v, float v_filter,
+                   float left_theta_deg, float right_theta_deg,
+                   float left_L0, float right_L0,
+                   //int jump_flag, int fall_flag, float turn_T,
+                   float left_Tp, float left_F0, float left_torque0, float left_torque1,
+                   float right_Tp, float right_F0, float right_torque0, float right_torque1,
+                   float wheel_torque_L, float wheel_torque_R) {
+
+    if (!csv_initialized || csv_file == NULL) return;
+
+    fprintf(csv_file, "%.3f,", current_time);
+    fprintf(csv_file, "%.2f,%.2f,", pitch_deg, pitch_rate);
+    //fprintf(csv_file, "%.2f,%.2f,%.2f,", yaw_target_deg, yaw_deg, yaw_rate);
+    fprintf(csv_file, "%.3f,", wheel_v);
+    fprintf(csv_file, "%.3f,%.3f,%.3f,%.3f,", target_x_ref, x_filter, smooth_target_v, v_filter);
+    fprintf(csv_file, "%.2f,%.2f,%.3f,%.3f,", left_theta_deg, right_theta_deg, left_L0, right_L0);
+    //fprintf(csv_file, "%d,%d,%.3f,", jump_flag, fall_flag, turn_T);
+    fprintf(csv_file, "%.2f,%.2f,%.2f,%.2f,", left_Tp, left_F0, left_torque0, left_torque1);
+    fprintf(csv_file, "%.2f,%.2f,%.2f,%.2f,", right_Tp, right_F0, right_torque0, right_torque1);
+    fprintf(csv_file, "%.3f,%.3f,", wheel_torque_L, wheel_torque_R);
+    fprintf(csv_file, "%.3f,%.3f,%.3f\n", pitch_deg * lqr_K[6], v_filter * lqr_K[9], right_theta_deg* lqr_K[10]);
+
+    // 刷新缓冲区，确保数据及时写入文件
+    fflush(csv_file);
+}
+
 int main(int argc, char **argv) {
     wb_robot_init();
 
@@ -204,13 +275,13 @@ int main(int argc, char **argv) {
     VMC_init(left_leg, L1, L2);
     VMC_init(right_leg, L1, L2);
 
-    PID_Controller leg_l_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0}; // 腿长PID
-    PID_Controller leg_r_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0};
+    PID_Controller leg_l_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0, 30}; // 腿长PID
+    PID_Controller leg_r_pid = {100.0f, 0.0f, 10.0f, 0, 0, 0, 30};
 
     float lqr_out_L[2], lqr_out_R[2];
     float err_L[6] = {0}, err_R[6] = {0};
 
-    float target_L0 = 0.9f;
+    float target_L0 = 0.8f;
     float target_v = 0.0f;
     float smooth_target_v = 0.0f;
     float target_x_ref = 0.0f;
@@ -224,14 +295,15 @@ int main(int argc, char **argv) {
 
     float roll_set = 0.0f;
 
+    init_csv_logging();
     // 跳跃状态机
     int jump_flag = 0;    // 0=正常, 1=下蹲压缩, 2=上升加速, 3=空中缩腿
     int jump_time = 0;
     float last_target_L0 = 0.9f;
 
-    PID_Controller turn_pid = {1.5f, 0.0f, 0.3f, 0, 0, 0};
-    PID_Controller roll_pid = {15.0f, 0.0f, 0.0f, 0, 0, 0};
-    PID_Controller tp_pid = {30.0f, 0.0f, 1.0f, 0, 0, 0};
+    PID_Controller turn_pid = {1.5f, 0.0f, 0.3f, 0, 0, 0, 50};
+    PID_Controller roll_pid = {15.0f, 0.0f, 0.0f, 0, 0, 0, 100};
+    PID_Controller tp_pid = {30.0f, 0.0f, 1.0f, 0, 0, 0, 100};
 
     float current_time = 0.0f;
     int fall_time = 0;
@@ -256,12 +328,12 @@ int main(int argc, char **argv) {
 
         const double *rpy = wb_inertial_unit_get_roll_pitch_yaw(inertial); 
         // 至于为什么实际数据顺序和函数名不一样可能与安装方向有关
-        double pitch = rpy[0];
+        double pitch = -rpy[0];
         double roll = rpy[1];
         double yaw = rpy[2];
 
         const double *gyro_vals = wb_gyro_get_values(gyro);
-        double pitch_rate = gyro_vals[0];
+        double pitch_rate = -gyro_vals[0];
         double roll_rate = gyro_vals[1];
         double yaw_rate = gyro_vals[2];
 
@@ -270,10 +342,11 @@ int main(int argc, char **argv) {
 
         printf("pitch: %.2f, pitch_rate: %2f\n", pitch * 180.0f / PI, pitch_rate);
         printf("yaw_target: %.2f, yaw: %.2f, yaw_rate: %2f\n", turn_set * 180.0f / PI, yaw * 180.0f / PI, yaw_rate);
-        left_leg->phi1 = wb_position_sensor_get_value(ecd_LF) + PI * 150.0f / 180.0f;
-        left_leg->phi4 = wb_position_sensor_get_value(ecd_LB) + PI * 30.0f / 180.0f;
-        right_leg->phi4 = wb_position_sensor_get_value(ecd_RF) + PI * 30.0f / 180.0f;
-        right_leg->phi1 = wb_position_sensor_get_value(ecd_RB) + PI * 150.0f / 180.0f;
+        left_leg->phi4 = wb_position_sensor_get_value(ecd_LF) + PI * 30.0f / 180.0f;
+        left_leg->phi1 = wb_position_sensor_get_value(ecd_LB) + PI * 150.0f / 180.0f;
+        right_leg->phi1 = wb_position_sensor_get_value(ecd_RF) + PI * 150.0f / 180.0f;
+        right_leg->phi4 = wb_position_sensor_get_value(ecd_RB) + PI * 30.0f / 180.0f;
+        // 轮腿左右腿建模是翻转的而不是对称，所以右腿phi1是前腿，左腿phi1是后腿
 
         // 轮子速度计算（用于卡尔曼滤波测量）
         // 这里不能用webots的获得轮子速度的函数，该函数似乎只能获得绝对值？ 
@@ -313,6 +386,7 @@ int main(int argc, char **argv) {
         v_filter = vel_acc[0];                  // 滤波后速度
         x_filter += v_filter * DT;              // 积分得位移
 
+        printf("accel: %.2f", MotionAccel_b[0]);
         printf("target_x: %.3f x: %.3f\n", target_x_ref, x_filter);
         printf("target_v: %.3f v: %.3f\n", smooth_target_v, v_filter);
 
@@ -373,11 +447,13 @@ int main(int argc, char **argv) {
         }
 
         LQR_Calc(lqr_out_R, lqr_K, err_R);
+        printf("theta: %.2f, v: %.2f, pitch: %.2f\n", lqr_K[0] * err_R[0], lqr_K[3] * err_R[3], lqr_K[4] * err_R[4]);
         right_leg->Tp = lqr_out_R[1];
 
         // 防劈叉补偿
         float theta_err = 0.0f - (left_leg->theta + right_leg->theta);
         float leg_tp = PID_Calc(&tp_pid, theta_err, 0.0f);
+        // leg_tp = 0;
         left_leg->Tp += leg_tp;
         right_leg->Tp += leg_tp;
 
@@ -480,10 +556,14 @@ int main(int argc, char **argv) {
         if (right_leg->torque_set[1] > torque_limit) right_leg->torque_set[1] = torque_limit;
         if (right_leg->torque_set[1] < -torque_limit) right_leg->torque_set[1] = -torque_limit;
 
-        wb_motor_set_torque(joint_LF, left_leg->torque_set[0]);
-        wb_motor_set_torque(joint_LB, left_leg->torque_set[1]);
-        wb_motor_set_torque(joint_RF, right_leg->torque_set[1]);
-        wb_motor_set_torque(joint_RB, right_leg->torque_set[0]);
+        printf("left Tp: %.2f, F0: %.2f, torque0: %.2f, torque1: %.2f\n", left_leg->Tp, left_leg->F0, left_leg->torque_set[0], left_leg->torque_set[1]);
+        printf("right Tp: %.2f, F0: %.2f, torque0: %.2f, torque1: %.2f\n", right_leg->Tp, right_leg->F0, right_leg->torque_set[0], right_leg->torque_set[1]);
+
+        wb_motor_set_torque(joint_LF, left_leg->torque_set[1]);
+        wb_motor_set_torque(joint_LB, left_leg->torque_set[0]);
+        wb_motor_set_torque(joint_RF, right_leg->torque_set[0]);
+        wb_motor_set_torque(joint_RB, right_leg->torque_set[1]);
+
 
         // 偏航角补偿 (Turn)
         float yaw_err = turn_set - yaw;
@@ -492,30 +572,47 @@ int main(int argc, char **argv) {
         else if (yaw_err < -PI) yaw_err += 2.0f * PI;
 
         float turn_T = turn_pid.kp * yaw_err - turn_pid.kd * yaw_rate;
+        // turn_T = 0;
 
         printf("target len: %.3f, left len: %.3f, right len: %.3f\n", target_L0, left_leg->L0, right_leg->L0);
-        printf("jump_flag: %d, left_ground: %d, right_ground: %d\n", jump_flag, left_ground, right_ground);
+        //printf("jump_flag: %d, left_ground: %d, right_ground: %d\n", jump_flag, left_ground, right_ground);
         float wheel_torque_L, wheel_torque_R;
 
         if(fall_flag)
         {
             turn_T = 0.0f;
         }
-        wheel_torque_L = lqr_out_L[0] + turn_T;
-        wheel_torque_R = lqr_out_R[0] + turn_T;
+        wheel_torque_L = lqr_out_L[0] - turn_T;
+        wheel_torque_R = lqr_out_R[0] - turn_T;
 
         if (wheel_torque_L > WHEEL_TORQUE_MAX) wheel_torque_L = WHEEL_TORQUE_MAX;
         if (wheel_torque_L < -WHEEL_TORQUE_MAX) wheel_torque_L = -WHEEL_TORQUE_MAX;
         if (wheel_torque_R > WHEEL_TORQUE_MAX) wheel_torque_R = WHEEL_TORQUE_MAX;
         if (wheel_torque_R < -WHEEL_TORQUE_MAX) wheel_torque_R = -WHEEL_TORQUE_MAX;
 
-        printf("wheel_L_torque: %.3f, wheel_R_torque: %.3f, turn_T: %.3f, raw: %.3f,%.3f\n", wheel_torque_L, wheel_torque_R, turn_T, lqr_out_L[0], lqr_out_R[0]);
+        //printf("wheel_L_torque: %.3f, wheel_R_torque: %.3f, turn_T: %.3f, raw: %.3f,%.3f\n", wheel_torque_L, wheel_torque_R, turn_T, lqr_out_L[0], lqr_out_R[0]);
         wb_motor_set_torque(wheel_L, wheel_torque_L);
         wb_motor_set_torque(wheel_R, wheel_torque_R);
 
         printf("\n\n");
+        // 写入CSV行
+        write_csv_row(current_time,
+                     pitch * 180.0f / PI, pitch_rate,
+                     // turn_set * 180.0f / PI, yaw * 180.0f / PI, yaw_rate,
+                     wheel_v,
+                     target_x_ref, x_filter,
+                     smooth_target_v, v_filter,
+                     left_leg->theta * 180.0f / PI, right_leg->theta * 180.0f / PI,
+                     left_leg->L0, right_leg->L0,
+                     // jump_flag, fall_flag, turn_T,
+                     left_leg->Tp, left_leg->F0, left_leg->torque_set[0], left_leg->torque_set[1],
+                     right_leg->Tp, right_leg->F0, right_leg->torque_set[0], right_leg->torque_set[1],
+                     wheel_torque_L, wheel_torque_R);
     }
-
+    if (csv_file != NULL) {
+        fclose(csv_file);
+        printf("CSV日志文件已保存: %s\n", csv_filename);
+    }
     wb_robot_cleanup();
     return 0;
 }
