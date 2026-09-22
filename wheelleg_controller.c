@@ -15,12 +15,12 @@
 #include "keyboard.h"
 
 const float lqr_K[12] = {
-    -15.7962f, -2.1477f, -0.1130f, -5.9228f, -127.9996f, -29.9050f,
-   37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
+    -18.5289f, -3.8021f, -1.2500f, -40.6604f, -270.6452f, -67.8242f,
+   62.5455f, 2.3431f, 0.0385f, 1.2460f, 17.6498f, 1.7696f
 };
 // const float lqr_K[12] = {
-//     -10.3087f, -0.7176f, -1.1702f, -5.2173f, -42.9164f, -5.5554f,
-//    37.6776f, 1.4518f, -0.1266f, -0.5637f, -6.1597f, -0.6672f
+//     -18.5289f, -3.8021f, -1.2500f, -40.6604f, -270.6452f, -67.8242f,
+//    62.5455f, 2.3431f, 0.0385f, 1.2460f, 17.6498f, 1.7696f
 // };
 // const float lqr_K[12] = {
 //     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -36,9 +36,9 @@ const float lqr_K[12] = {
 
 #define L1 0.64f // 大腿长
 #define L2 0.8f // 小腿长
-#define TORQUE_MAX 10.0f // 关节电机力矩限制
+#define TORQUE_MAX 30.0f // 关节电机力矩限制
 #define WHEEL_TORQUE_MAX 3.0f // 轮毂电机力矩限制
-#define MG 1.5f // 机器人总重力的一半(单腿承重)
+#define MG 6.5f // 机器人总重力的一半(单腿承重)
 #define WHEEL_RAD 0.15f // 轮子半径
 #define ACCEL_LPF 0.0089f // 加速度低通滤波系数
 
@@ -302,7 +302,7 @@ int main(int argc, char **argv) {
     float last_target_L0 = 0.9f;
 
     PID_Controller turn_pid = {1.5f, 0.0f, 0.3f, 0, 0, 0, 50};
-    PID_Controller roll_pid = {15.0f, 0.0f, 0.0f, 0, 0, 0, 100};
+    PID_Controller roll_pid = {1.0f, 0.0f, 0.0f, 0, 0, 0, 100};
     PID_Controller tp_pid = {30.0f, 0.0f, 1.0f, 0, 0, 0, 100};
 
     float current_time = 0.0f;

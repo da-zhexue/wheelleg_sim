@@ -1,0 +1,472 @@
+#VRML_SIM R2025b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/a1e1d1553c83ec311089b851ccc3abae066998ca/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/a1e1d1553c83ec311089b851ccc3abae066998ca/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/a1e1d1553c83ec311089b851ccc3abae066998ca/projects/objects/floors/protos/RectangleArena.proto"
+
+WorldInfo {
+  basicTimeStep 4
+}
+Viewpoint {
+  orientation 0.630812063384323 -0.33626776229551825 0.6992854443856081 0.21774507576248797
+  position -6.272888934909539 -2.6852235362272765 1.3923217637422078
+  followType "None"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  translation 0 0 0.12
+  floorSize 10000 10000
+}
+Solid {
+  translation -2.19 -8.51313 1.13047
+  rotation 1 0 0 -0.261795307179586
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+        }
+      }
+      geometry ElevationGrid {
+        xDimension 5
+        yDimension 5
+      }
+    }
+  ]
+  boundingObject ElevationGrid {
+    xDimension 5
+    yDimension 5
+  }
+}
+Solid {
+  translation 0.97 -7.63 5.01
+  rotation 1 0 0 0
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+        }
+      }
+      geometry ElevationGrid {
+        xDimension 2
+        xSpacing 0.6
+        yDimension 5
+      }
+    }
+  ]
+  name "solid(1)"
+  boundingObject ElevationGrid {
+    xDimension 2
+    xSpacing 0.6
+    yDimension 5
+  }
+}
+Robot {
+  translation -0.3799067450433098 -1.0961060371399398 0.9387274045655716
+  rotation 0.23060836298085743 0.2583689064581227 0.9381179515918684 0.11671823200836431
+  children [
+    Accelerometer {
+    }
+    InertialUnit {
+      name "inertial"
+    }
+    Gyro {
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position 0.15016343718408398
+        axis -1 0 0
+        anchor -0.55 0 -0.05
+      }
+      device [
+        PositionSensor {
+          name "ecd_LB"
+        }
+        RotationalMotor {
+          name "joint_LB"
+          maxTorque 30
+        }
+      ]
+      endPoint Solid {
+        translation -0.5499983922740044 -0.281467162706303 -0.13889254296930797
+        rotation 0.9999999999996794 -2.2103030193812165e-07 7.697668305690531e-07 1.9470362567216182
+        children [
+          HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.21269223910523635
+              anchor 0 0 0.27
+            }
+            endPoint Solid {
+              translation 0 -0.31433884160081144 0.12539295778537946
+              rotation 1 0 0 2.0452822391052363
+              children [
+                Pose {
+                  translation 0 0 0.35
+                  children [
+                    HingeJoint {
+                      jointParameters HingeJointParameters {
+                        position -3.8108720785416432
+                      }
+                      endPoint SolidReference {
+                        solidName "wheel_L"
+                      }
+                    }
+                  ]
+                }
+                Shape {
+                  appearance Appearance {
+                    material Material {
+                    }
+                  }
+                  geometry Box {
+                    size 0.1 0.1 0.8
+                  }
+                }
+              ]
+              name "leg_LBD"
+              boundingObject Box {
+                size 0.1 0.1 0.8
+              }
+              physics Physics {
+                density -1
+                mass 0.5
+              }
+            }
+          }
+          Shape {
+            appearance Appearance {
+              material Material {
+              }
+            }
+            geometry Box {
+              size 0.1 0.1 0.64
+            }
+          }
+        ]
+        name "leg_LBU"
+        boundingObject Box {
+          size 0.1 0.1 0.64
+        }
+        physics Physics {
+          density -1
+          mass 0.5
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position -0.15370536819120403
+        anchor 0.55 0 -0.05
+      }
+      device [
+        PositionSensor {
+          name "ecd_RB"
+        }
+        RotationalMotor {
+          name "joint_RB"
+          maxTorque 30
+        }
+      ]
+      endPoint Solid {
+        translation 0.5499986316709269 -0.2817803160043642 -0.13789542226433998
+        rotation 0.9999999999998486 2.1711457861792e-07 -5.058275186799126e-07 1.940690882077913
+        children [
+          HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.2767916942829382
+              anchor 0 0 0.4
+            }
+            endPoint Solid {
+              translation 0 -0.26911421917912176 0.11043733487272578
+              rotation 0.9999999999999999 0 0 2.106791694282938
+              children [
+                Pose {
+                  translation 0 0 0.35
+                  children [
+                    HingeJoint {
+                      jointParameters HingeJointParameters {
+                        position -3.0818072133082746
+                      }
+                      endPoint SolidReference {
+                        solidName "wheel_R"
+                      }
+                    }
+                  ]
+                }
+                Shape {
+                  appearance Appearance {
+                    material Material {
+                    }
+                  }
+                  geometry Box {
+                    size 0.1 0.1 0.8
+                  }
+                }
+              ]
+              name "leg_RBD"
+              boundingObject Box {
+                size 0.1 0.1 0.8
+              }
+              physics Physics {
+                density -1
+                mass 0.5
+              }
+            }
+          }
+          Shape {
+            appearance Appearance {
+              material Material {
+              }
+            }
+            geometry Box {
+              size 0.1 0.1 0.64
+            }
+          }
+        ]
+        name "leg_RBU"
+        boundingObject Box {
+          size 0.1 0.1 0.64
+        }
+        physics Physics {
+          density -1
+          mass 0.5
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position -0.2147003774931937
+        axis -1 0 0
+        anchor -0.55 0 -0.05
+      }
+      device [
+        PositionSensor {
+          name "ecd_LF"
+        }
+        RotationalMotor {
+          name "joint_LF"
+          maxTorque 30
+        }
+      ]
+      endPoint Solid {
+        translation -0.5499986333700244 0.28696591557892603 -0.1204783696958278
+        rotation 0.99999999999962 -8.319277055968061e-07 2.600055234461276e-07 1.2619003774905764
+        children [
+          HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.2681088605447418
+              axis -1 0 0
+              anchor -0.55 0 -0.27
+            }
+            endPoint Solid {
+              translation -1.3178347302300608e-13 -0.28458363227618694 -0.08044946520652979
+              rotation 1 0 0 1.040891139455258
+              children [
+                HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -0.1078742708651555
+                    axis -1 0 0
+                    anchor 0 0 0.4
+                  }
+                  device [
+                    PositionSensor {
+                      name "ecd_wheel_L"
+                    }
+                    RotationalMotor {
+                      name "wheel_motor_L"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation 0 0 0.4
+                    rotation -0.6993735548408286 -0.1475030381191491 -0.6993707775814795 3.4344869835630036
+                    children [
+                      Shape {
+                        appearance Appearance {
+                          material Material {
+                          }
+                        }
+                        geometry Cylinder {
+                          height 0.1
+                          radius 0.15
+                        }
+                      }
+                    ]
+                    name "wheel_L"
+                    boundingObject Cylinder {
+                      height 0.1
+                      radius 0.15
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.5
+                    }
+                  }
+                }
+                Shape {
+                  appearance Appearance {
+                    material Material {
+                    }
+                  }
+                  geometry Box {
+                    size 0.1 0.1 0.8
+                  }
+                }
+              ]
+              name "leg_LFD"
+              boundingObject Box {
+                size 0.1 0.1 0.8
+              }
+              physics Physics {
+                density -1
+                mass 0.5
+              }
+            }
+          }
+          Shape {
+            appearance Appearance {
+              material Material {
+              }
+            }
+            geometry Box {
+              size 0.1 0.1 0.64
+            }
+          }
+        ]
+        name "leg_LFU"
+        boundingObject Box {
+          size 0.1 0.1 0.64
+        }
+        physics Physics {
+          density -1
+          mass 0.5
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position 0.21906968776623076
+        anchor 0.55 0 0
+      }
+      device [
+        PositionSensor {
+          name "ecd_RF"
+        }
+        RotationalMotor {
+          name "joint_RF"
+          maxTorque 30
+        }
+      ]
+      endPoint Solid {
+        translation 0.5499984682895657 0.29778586083480335 -0.11810731496080787
+        rotation 0.9999999999995738 7.877727395308073e-07 -4.814092668509919e-07 1.2690696877639136
+        children [
+          HingeJoint {
+            jointParameters HingeJointParameters {
+              position -0.3432162568121999
+              anchor -0.55 0 -0.27
+            }
+            endPoint Solid {
+              translation -1.412203687323199e-13 -0.2756348086835749 -0.06815914057116929
+              rotation 1 0 0 0.9767837431877994
+              children [
+                HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -0.6485714441716262
+                    anchor 0 0 0.4
+                  }
+                  device [
+                    PositionSensor {
+                      name "ecd_wheel_R"
+                    }
+                    RotationalMotor {
+                      name "wheel_motor_R"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation -4.538420000000001e-11 1.2690751807000616e-08 0.3999999903810103
+                    rotation -0.6803352869789044 0.27235223348560395 -0.6804176351379607 2.610242912669273
+                    children [
+                      Shape {
+                        appearance Appearance {
+                          material Material {
+                          }
+                        }
+                        geometry Cylinder {
+                          height 0.1
+                          radius 0.15
+                        }
+                      }
+                    ]
+                    name "wheel_R"
+                    boundingObject Cylinder {
+                      height 0.1
+                      radius 0.15
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.5
+                    }
+                  }
+                }
+                Shape {
+                  appearance Appearance {
+                    material Material {
+                    }
+                  }
+                  geometry Box {
+                    size 0.1 0.1 0.8
+                  }
+                }
+              ]
+              name "leg_RFD"
+              boundingObject Box {
+                size 0.1 0.1 0.8
+              }
+              physics Physics {
+                density -1
+                mass 0.5
+              }
+            }
+          }
+          Shape {
+            appearance Appearance {
+              material Material {
+              }
+            }
+            geometry Box {
+              size 0.1 0.1 0.64
+            }
+          }
+        ]
+        name "leg_RFU"
+        boundingObject Box {
+          size 0.1 0.1 0.64
+        }
+        physics Physics {
+          density -1
+          mass 0.5
+        }
+      }
+    }
+    Shape {
+      appearance Appearance {
+        material Material {
+        }
+      }
+      geometry Box {
+        size 1 1 0.5
+      }
+    }
+  ]
+  name "wheelleg"
+  boundingObject Box {
+    size 1 1 0.5
+  }
+  physics Physics {
+    density -1
+    mass 2
+  }
+  controller "wheelleg_sim"
+}
